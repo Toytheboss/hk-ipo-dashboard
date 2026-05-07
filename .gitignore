@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+debug_*.png
+hk_ipo_charts.png
+listed_ipos.csv

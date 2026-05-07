@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>港股 IPO 打新数据分析</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #0f172a; color: #e2e8f0; }
+.header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 32px 24px 24px; text-align: center; border-bottom: 1px solid #1e293b; }
+.header h1 { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header p { color: #94a3b8; margin-top: 8px; font-size: 14px; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; padding: 24px; max-width: 1400px; margin: 0 auto; }
+.stat-card { background: #1e293b; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #334155; transition: transform 0.2s; }
+.stat-card:hover { transform: translateY(-2px); border-color: #60a5fa; }
+.stat-card .value { font-size: 28px; font-weight: 700; margin: 4px 0; }
+.stat-card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+.stat-card .sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+.up { color: #ef4444; }
+.down { color: #22c55e; }
+.blue { color: #60a5fa; }
+.purple { color: #a78bfa; }
+.orange { color: #f59e0b; }
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 0 24px 24px; max-width: 1400px; margin: 0 auto; }
+.chart-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+.chart-card.full { grid-column: 1 / -1; }
+.chart-card h3 { font-size: 16px; margin-bottom: 12px; color: #f1f5f9; }
+.chart-box { width: 100%; height: 400px; }
+.chart-box.tall { height: 500px; }
+.chart-box.short { height: 350px; }
+.table-wrap { padding: 0 24px 40px; max-width: 1400px; margin: 0 auto; }
+.table-wrap h3 { font-size: 18px; margin-bottom: 16px; color: #f1f5f9; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #334155; padding: 10px 8px; text-align: left; font-weight: 600; position: sticky; top: 0; white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid #1e293b; white-space: nowrap; }
+tr:hover td { background: #1e293b; }
+.tbl-container { max-height: 600px; overflow-y: auto; border-radius: 12px; border: 1px solid #334155; background: #0f172a; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge-up { background: rgba(239,68,68,0.15); color: #ef4444; }
+.badge-down { background: rgba(34,197,94,0.15); color: #22c55e; }
+.badge-note { background: rgba(245,158,11,0.15); color: #f59e0b; }
+@media (max-width: 768px) {
+  .charts-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>港股 IPO 打新数据分析</h1>
+  <p id="dateRange"></p>
+</div>
+
+<div class="stats-row" id="statsRow"></div>
+
+<div class="charts-grid">
+  <div class="chart-card">
+    <h3>📊 每月 IPO 数量 & 破发率</h3>
+    <div class="chart-box" id="chartMonthly"></div>
+  </div>
+  <div class="chart-card">
+    <h3>📈 首日涨跌幅分布</h3>
+    <div class="chart-box" id="chartDist"></div>
+  </div>
+  <div class="chart-card">
+    <h3>🏆 首日涨幅 TOP 15</h3>
+    <div class="chart-box tall" id="chartTop"></div>
+  </div>
+  <div class="chart-card">
+    <h3>💔 首日跌幅 TOP 15（破发最惨）</h3>
+    <div class="chart-box tall" id="chartBottom"></div>
+  </div>
+  <div class="chart-card">
+    <h3>🔍 超额认购倍数 vs 首日涨跌幅</h3>
+    <div class="chart-box" id="chartScatter"></div>
+  </div>
+  <div class="chart-card">
+    <h3>🎯 一手中签率 vs 首日涨跌幅</h3>
+    <div class="chart-box" id="chartSuccess"></div>
+  </div>
+  <div class="chart-card full">
+    <h3>📉 首日涨跌幅 vs 累计涨跌幅</h3>
+    <div class="chart-box tall" id="chartCompare"></div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <h3>📋 完整数据表</h3>
+  <div class="tbl-container">
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th>股票名称</th><th>代码</th><th>上市日期</th><th>发行价</th>
+          <th>上市价</th><th>最新价</th><th>超额认购(x)</th><th>中签率</th>
+          <th>首日涨跌</th><th>累计涨跌</th><th>备注</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const DATA = [{"name": "COFOE MEDICAL", "code": "01187.HK", "note": "Sink Below Listing Price", "date": "2026/05/06", "lotSize": "100", "offerPrice": 39.33, "listingPrice": 39.33, "oversub": 398.1, "lotsFor1": "2000 lot", "successRate": 5.0, "lastPrice": 38.3, "debutChg": -1.09, "accChg": -2.62}, {"name": "STAR SPORTS MED", "code": "01609.HK", "note": "", "date": "2026/05/05", "lotSize": "50", "offerPrice": 98.5, "listingPrice": 98.5, "oversub": 7822.1, "lotsFor1": "", "successRate": 1.5, "lastPrice": 215.8, "debutChg": 118.27, "accChg": 119.09}, {"name": "SUNMI TECH-W", "code": "06810.HK", "note": "", "date": "2026/04/29", "lotSize": "100", "offerPrice": 24.86, "listingPrice": 24.86, "oversub": 2002.2, "lotsFor1": "1500 lot", "successRate": 5.0, "lastPrice": 79.8, "debutChg": 241.11, "accChg": 221.0}, {"name": "XIZHI TECH-P", "code": "01879.HK", "note": "", "date": "2026/04/28", "lotSize": "15", "offerPrice": 183.2, "listingPrice": 183.2, "oversub": 5783.7, "lotsFor1": "2000 lot", "successRate": 6.0, "lastPrice": 882.5, "debutChg": 383.62, "accChg": 381.71}, {"name": "MABWELL-B", "code": "02493.HK", "note": "Sink Below Listing Price", "date": "2026/04/28", "lotSize": "200", "offerPrice": 27.64, "listingPrice": 27.64, "oversub": 480.7, "lotsFor1": "350 lot", "successRate": 1.0, "lastPrice": 27.56, "debutChg": 0.58, "accChg": -0.29}, {"name": "HUAQIN", "code": "03296.HK", "note": "", "date": "2026/04/23", "lotSize": "100", "offerPrice": 77.7, "listingPrice": 77.7, "oversub": 530.3, "lotsFor1": "700 lot", "successRate": 12.0, "lastPrice": 105.6, "debutChg": 13.26, "accChg": 35.91}, {"name": "VGT", "code": "02476.HK", "note": "", "date": "2026/04/21", "lotSize": "100", "offerPrice": 209.88, "listingPrice": 209.88, "oversub": 387.0, "lotsFor1": "700 lot", "successRate": 0.7, "lastPrice": 334.0, "debutChg": 50.09, "accChg": 59.14}, {"name": "MANYCORE TECH", "code": "00068.HK", "note": "", "date": "2026/04/17", "lotSize": "500", "offerPrice": 7.62, "listingPrice": 7.62, "oversub": 1589.6, "lotsFor1": "1800 lot", "successRate": 3.0, "lastPrice": 24.3, "debutChg": 144.09, "accChg": 218.9}, {"name": "GPIXEL", "code": "03277.HK", "note": "", "date": "2026/04/17", "lotSize": "100", "offerPrice": 39.88, "listingPrice": 39.88, "oversub": 1137.2, "lotsFor1": "2000 lot", "successRate": 1.0, "lastPrice": 84.0, "debutChg": 75.53, "accChg": 110.63}, {"name": "YOUZAN", "code": "06051.HK", "note": "", "date": "2026/04/17", "lotSize": "4,000", "offerPrice": null, "listingPrice": null, "oversub": null, "lotsFor1": "", "successRate": null, "lastPrice": 0.126, "debutChg": null, "accChg": -23.17}, {"name": "SIGENERGY", "code": "06656.HK", "note": "", "date": "2026/04/16", "lotSize": "100", "offerPrice": 324.2, "listingPrice": 324.2, "oversub": 1101.1, "lotsFor1": "5000 lot", "successRate": 2.0, "lastPrice": 543.5, "debutChg": 103.42, "accChg": 67.64}, {"name": "TONGSHIFU", "code": "00664.HK", "note": "Sink Below Listing Price", "date": "2026/03/31", "lotSize": "100", "offerPrice": 60.0, "listingPrice": 60.0, "oversub": 58.6, "lotsFor1": "45 lot", "successRate": 2.8, "lastPrice": 21.6, "debutChg": -49.17, "accChg": -64.0}, {"name": "FOURSEMI", "code": "03625.HK", "note": "", "date": "2026/03/31", "lotSize": "100", "offerPrice": 40.0, "listingPrice": 40.0, "oversub": 3117.4, "lotsFor1": "800 lot", "successRate": 5.0, "lastPrice": 135.3, "debutChg": 100.0, "accChg": 238.25}, {"name": "HUAYAN ROBOTICS", "code": "01021.HK", "note": "", "date": "2026/03/30", "lotSize": "200", "offerPrice": 17.0, "listingPrice": 17.0, "oversub": 5058.4, "lotsFor1": "1500 lot", "successRate": 5.0, "lastPrice": 19.03, "debutChg": 8.24, "accChg": 11.94}, {"name": "DIAGENS-B", "code": "02526.HK", "note": "", "date": "2026/03/30", "lotSize": "50", "offerPrice": 99.0, "listingPrice": 99.0, "oversub": 1072.4, "lotsFor1": "1400 lot", "successRate": 3.0, "lastPrice": 314.0, "debutChg": 111.72, "accChg": 217.17}, {"name": "EPIWORLD", "code": "02726.HK", "note": "", "date": "2026/03/30", "lotSize": "50", "offerPrice": 76.26, "listingPrice": 76.26, "oversub": 49.7, "lotsFor1": "40 lot", "successRate": 20.0, "lastPrice": 108.3, "debutChg": 35.06, "accChg": 42.01}, {"name": "EXTREME VISION", "code": "06636.HK", "note": "", "date": "2026/03/30", "lotSize": "50", "offerPrice": 40.0, "listingPrice": 40.0, "oversub": 4590.4, "lotsFor1": "3000 lot", "successRate": 10.0, "lastPrice": 99.05, "debutChg": 150.0, "accChg": 147.62}, {"name": "NEW VISION CO", "code": "02632.HK", "note": "", "date": "2026/03/24", "lotSize": "50", "offerPrice": 44.2, "listingPrice": 44.2, "oversub": 67.9, "lotsFor1": "60 lot", "successRate": 30.0, "lastPrice": 100.3, "debutChg": -36.92, "accChg": 126.92}, {"name": "GALAXIS TECH", "code": "02729.HK", "note": "", "date": "2026/03/24", "lotSize": "200", "offerPrice": 16.66, "listingPrice": 16.66, "oversub": 2152.3, "lotsFor1": "3500 lot", "successRate": 5.0, "lastPrice": 35.46, "debutChg": 84.27, "accChg": 112.84}, {"name": "FS.COM", "code": "03355.HK", "note": "", "date": "2026/03/23", "lotSize": "100", "offerPrice": 41.6, "listingPrice": 41.6, "oversub": 1578.7, "lotsFor1": "", "successRate": 1.0, "lastPrice": 42.52, "debutChg": 13.46, "accChg": 2.21}, {"name": "NSING TECH", "code": "02701.HK", "note": "", "date": "2026/03/23", "lotSize": "200", "offerPrice": 10.8, "listingPrice": 10.8, "oversub": 130.8, "lotsFor1": "350 lot", "successRate": 30.0, "lastPrice": 13.06, "debutChg": 4.17, "accChg": 20.93}, {"name": "DELTON", "code": "01989.HK", "note": "", "date": "2026/03/20", "lotSize": "100", "offerPrice": 71.88, "listingPrice": 71.88, "oversub": 1069.7, "lotsFor1": "2000 lot", "successRate": 5.0, "lastPrice": 208.4, "debutChg": 33.56, "accChg": 189.93}, {"name": "VOYAH AUTO", "code": "07489.HK", "note": "", "date": "2026/03/19", "lotSize": "1,000", "offerPrice": null, "listingPrice": null, "oversub": null, "lotsFor1": "", "successRate": null, "lastPrice": 5.82, "debutChg": null, "accChg": -22.4}, {"name": "MEIG", "code": "03268.HK", "note": "Sink Below Listing Price", "date": "2026/03/10", "lotSize": "100", "offerPrice": 28.86, "listingPrice": 28.86, "oversub": 173.1, "lotsFor1": "100 lot", "successRate": 5.0, "lastPrice": 22.94, "debutChg": 1.52, "accChg": -20.51}, {"name": "ALSCO POOLING", "code": "02649.HK", "note": "Sink Below Listing Price", "date": "2026/03/09", "lotSize": "500", "offerPrice": 11.0, "listingPrice": 11.0, "oversub": 5296.2, "lotsFor1": "", "successRate": 0.0, "lastPrice": 3.9, "debutChg": -43.64, "accChg": -64.55}, {"name": "ZHAOWEI", "code": "02692.HK", "note": "Sink Below Listing Price", "date": "2026/03/09", "lotSize": "100", "offerPrice": 71.28, "listingPrice": 71.28, "oversub": 1535.8, "lotsFor1": "3000 lot", "successRate": 4.0, "lastPrice": 67.4, "debutChg": 2.41, "accChg": -5.44}, {"name": "ESTUN", "code": "02715.HK", "note": "Sink Below Listing Price", "date": "2026/03/09", "lotSize": "200", "offerPrice": 15.36, "listingPrice": 15.36, "oversub": 18.7, "lotsFor1": "25 lot", "successRate": 5.0, "lastPrice": 14.5, "debutChg": -16.02, "accChg": -5.6}, {"name": "HAIZHI TECH GP", "code": "02706.HK", "note": "", "date": "2026/02/13", "lotSize": "200", "offerPrice": 27.06, "listingPrice": 27.06, "oversub": 5064.1, "lotsFor1": "", "successRate": 0.1, "lastPrice": 47.26, "debutChg": 242.2, "accChg": 74.65}, {"name": "WOER", "code": "09981.HK", "note": "Sink Below Listing Price", "date": "2026/02/13", "lotSize": "200", "offerPrice": 20.09, "listingPrice": 20.09, "oversub": 568.6, "lotsFor1": "350 lot", "successRate": 0.3, "lastPrice": 16.2, "debutChg": 2.94, "accChg": -19.36}, {"name": "WUXI LEAD", "code": "00470.HK", "note": "", "date": "2026/02/11", "lotSize": "100", "offerPrice": 45.8, "listingPrice": 45.8, "oversub": 78.5, "lotsFor1": "40 lot", "successRate": 18.0, "lastPrice": 57.65, "debutChg": 0.0, "accChg": 25.87}, {"name": "RIDGE OUTDOOR", "code": "02720.HK", "note": "", "date": "2026/02/10", "lotSize": "500", "offerPrice": 12.25, "listingPrice": 12.25, "oversub": 3653.2, "lotsFor1": "", "successRate": 1.0, "lastPrice": 24.88, "debutChg": 102.29, "accChg": 103.1}, {"name": "AXERA", "code": "00600.HK", "note": "Sink Below Listing Price", "date": "2026/02/10", "lotSize": "100", "offerPrice": 28.2, "listingPrice": 28.2, "oversub": 103.8, "lotsFor1": "50 lot", "successRate": 18.0, "lastPrice": 22.9, "debutChg": 0.0, "accChg": -18.79}, {"name": "MONTAGE TECH", "code": "06809.HK", "note": "", "date": "2026/02/09", "lotSize": "100", "offerPrice": 106.89, "listingPrice": 106.89, "oversub": 706.3, "lotsFor1": "1000 lot", "successRate": 5.0, "lastPrice": 333.0, "debutChg": 63.72, "accChg": 211.53}, {"name": "DISTINCT HEALTH", "code": "02677.HK", "note": "Sink Below Listing Price", "date": "2026/02/06", "lotSize": "50", "offerPrice": 59.9, "listingPrice": 59.9, "oversub": 2729.7, "lotsFor1": "", "successRate": 1.0, "lastPrice": 28.5, "debutChg": 13.36, "accChg": -52.42}, {"name": "MUYUAN", "code": "02714.HK", "note": "", "date": "2026/02/06", "lotSize": "100", "offerPrice": 39.0, "listingPrice": 39.0, "oversub": 4.9, "lotsFor1": "1 lot", "successRate": 100.0, "lastPrice": 42.2, "debutChg": 3.9, "accChg": 8.21}, {"name": "HANS CNC", "code": "03200.HK", "note": "", "date": "2026/02/06", "lotSize": "100", "offerPrice": 95.8, "listingPrice": 95.8, "oversub": 445.4, "lotsFor1": "600 lot", "successRate": 10.0, "lastPrice": 142.8, "debutChg": 14.82, "accChg": 49.06}, {"name": "GON TECHNOLOGY", "code": "02768.HK", "note": "", "date": "2026/02/04", "lotSize": "200", "offerPrice": 36.0, "listingPrice": 36.0, "oversub": 2250.9, "lotsFor1": "5500 lot", "successRate": 2.0, "lastPrice": 48.0, "debutChg": 11.56, "accChg": 33.33}, {"name": "EASTROC", "code": "09980.HK", "note": "Sink Below Listing Price", "date": "2026/02/03", "lotSize": "100", "offerPrice": 248.0, "listingPrice": 248.0, "oversub": 56.5, "lotsFor1": "60 lot", "successRate": 15.0, "lastPrice": 169.0, "debutChg": 1.53, "accChg": -31.86}, {"name": "BUSYMING", "code": "01768.HK", "note": "", "date": "2026/01/28", "lotSize": "100", "offerPrice": 236.6, "listingPrice": 236.6, "oversub": 1898.5, "lotsFor1": "", "successRate": 3.0, "lastPrice": 452.6, "debutChg": 69.06, "accChg": 91.29}, {"name": "LONGCHEER", "code": "09611.HK", "note": "Sink Below Listing Price", "date": "2026/01/22", "lotSize": "100", "offerPrice": 31.0, "listingPrice": 31.0, "oversub": 1148.8, "lotsFor1": "500 lot", "successRate": 0.2, "lastPrice": 22.82, "debutChg": 3.55, "accChg": -26.39}, {"name": "BBSB INTL", "code": "08610.HK", "note": "", "date": "2026/01/13", "lotSize": "4,000", "offerPrice": 0.6, "listingPrice": 0.6, "oversub": 10744.1, "lotsFor1": "", "successRate": 0.1, "lastPrice": 0.61, "debutChg": 11.67, "accChg": 1.67}, {"name": "HX COLDCHAIN", "code": "01641.HK", "note": "Sink Below Listing Price", "date": "2026/01/13", "lotSize": "500", "offerPrice": 12.26, "listingPrice": 12.26, "oversub": 2308.3, "lotsFor1": "", "successRate": 1.0, "lastPrice": 6.68, "debutChg": 0.33, "accChg": -45.51}, {"name": "GIGADEVICE", "code": "03986.HK", "note": "", "date": "2026/01/13", "lotSize": "100", "offerPrice": 162.0, "listingPrice": 162.0, "oversub": 541.2, "lotsFor1": "600 lot", "successRate": 2.0, "lastPrice": 513.5, "debutChg": 37.53, "accChg": 216.97}, {"name": "OMNIVISION", "code": "00501.HK", "note": "Sink Below Listing Price", "date": "2026/01/12", "lotSize": "100", "offerPrice": 104.8, "listingPrice": 104.8, "oversub": 8.3, "lotsFor1": "1 lot", "successRate": 100.0, "lastPrice": 88.3, "debutChg": 16.22, "accChg": -15.74}, {"name": "MINIMAX-W", "code": "00100.HK", "note": "", "date": "2026/01/09", "lotSize": "20", "offerPrice": 165.0, "listingPrice": 165.0, "oversub": 1836.2, "lotsFor1": "200 lot", "successRate": 2.8, "lastPrice": 803.5, "debutChg": 109.09, "accChg": 386.97}, {"name": "RIBOLIFE-B", "code": "06938.HK", "note": "", "date": "2026/01/09", "lotSize": "200", "offerPrice": 57.97, "listingPrice": 57.97, "oversub": 100.1, "lotsFor1": "100 lot", "successRate": 1.7, "lastPrice": 59.6, "debutChg": 41.62, "accChg": 2.81}, {"name": "JINXUN RESOURCE", "code": "03636.HK", "note": "Sink Below Listing Price", "date": "2026/01/09", "lotSize": "200", "offerPrice": 30.0, "listingPrice": 30.0, "oversub": 142.5, "lotsFor1": "200 lot", "successRate": 7.0, "lastPrice": 22.2, "debutChg": 26.0, "accChg": -26.0}, {"name": "KNOWLEDGE ATLAS", "code": "02513.HK", "note": "", "date": "2026/01/08", "lotSize": "100", "offerPrice": 116.2, "listingPrice": 116.2, "oversub": 1158.5, "lotsFor1": "200 lot", "successRate": 5.0, "lastPrice": 921.0, "debutChg": 13.17, "accChg": 692.6}, {"name": "EDGE MEDICAL-B", "code": "02675.HK", "note": "", "date": "2026/01/08", "lotSize": "100", "offerPrice": 43.24, "listingPrice": 43.24, "oversub": 1090.9, "lotsFor1": "900 lot", "successRate": 0.5, "lastPrice": 51.95, "debutChg": 30.9, "accChg": 20.14}, {"name": "ILUVATAR COREX", "code": "09903.HK", "note": "", "date": "2026/01/08", "lotSize": "100", "offerPrice": 144.6, "listingPrice": 144.6, "oversub": 413.2, "lotsFor1": "400 lot", "successRate": 7.0, "lastPrice": 605.0, "debutChg": 8.44, "accChg": 318.4}, {"name": "BIREN TECH", "code": "06082.HK", "note": "", "date": "2026/01/02", "lotSize": "200", "offerPrice": 19.6, "listingPrice": 19.6, "oversub": 2346.5, "lotsFor1": "250 lot", "successRate": 5.0, "lastPrice": 55.75, "debutChg": 75.82, "accChg": 184.44}, {"name": "INSILICO", "code": "03696.HK", "note": "", "date": "2025/12/30", "lotSize": "500", "offerPrice": 24.05, "listingPrice": 24.05, "oversub": 1426.4, "lotsFor1": "4000 lot", "successRate": 1.0, "lastPrice": 62.95, "debutChg": 24.66, "accChg": 161.75}, {"name": "51WORLD", "code": "06651.HK", "note": "", "date": "2025/12/30", "lotSize": "200", "offerPrice": 30.5, "listingPrice": 30.5, "oversub": 255.0, "lotsFor1": "100 lot", "successRate": 10.0, "lastPrice": 49.86, "debutChg": 29.9, "accChg": 63.48}, {"name": "ONEROBOTICS", "code": "06600.HK", "note": "", "date": "2025/12/30", "lotSize": "100", "offerPrice": 73.8, "listingPrice": 73.8, "oversub": 253.5, "lotsFor1": "400 lot", "successRate": 7.0, "lastPrice": 106.6, "debutChg": 0.07, "accChg": 44.44}, {"name": "XUNCE", "code": "03317.HK", "note": "", "date": "2025/12/30", "lotSize": "100", "offerPrice": 48.0, "listingPrice": 48.0, "oversub": 6.2, "lotsFor1": "8 lot", "successRate": 12.8, "lastPrice": 236.6, "debutChg": 1.04, "accChg": 392.92}, {"name": "FOREST CABIN", "code": "02657.HK", "note": "Sink Below Listing Price", "date": "2025/12/30", "lotSize": "50", "offerPrice": 77.77, "listingPrice": 77.77, "oversub": 1234.8, "lotsFor1": "1400 lot", "successRate": 2.0, "lastPrice": 59.1, "debutChg": 9.3, "accChg": -24.01}, {"name": "USAS BUILDING", "code": "02671.HK", "note": "Sink Below Listing Price", "date": "2025/12/30", "lotSize": "300", "offerPrice": 7.1, "listingPrice": 7.1, "oversub": 145.3, "lotsFor1": "200 lot", "successRate": 0.8, "lastPrice": 4.08, "debutChg": 7.61, "accChg": -42.53}, {"name": "NUOBIKAN", "code": "02635.HK", "note": "Sink Below Listing Price", "date": "2025/12/23", "lotSize": "50", "offerPrice": 80.0, "listingPrice": 80.0, "oversub": 187.7, "lotsFor1": "400 lot", "successRate": 3.0, "lastPrice": 19.94, "debutChg": 363.75, "accChg": -75.08}, {"name": "QINGSONG HEALTH", "code": "02661.HK", "note": "", "date": "2025/12/23", "lotSize": "200", "offerPrice": 22.68, "listingPrice": 22.68, "oversub": 1420.5, "lotsFor1": "1250 lot", "successRate": 6.0, "lastPrice": 39.32, "debutChg": 158.82, "accChg": 73.37}, {"name": "HANXBIO-B", "code": "03378.HK", "note": "Sink Below Listing Price", "date": "2025/12/23", "lotSize": "100", "offerPrice": 32.0, "listingPrice": 32.0, "oversub": 3073.1, "lotsFor1": "6000 lot", "successRate": 1.0, "lastPrice": 31.5, "debutChg": -46.25, "accChg": -1.56}, {"name": "NANHUA FUTURES", "code": "02691.HK", "note": "Sink Below Listing Price", "date": "2025/12/22", "lotSize": "500", "offerPrice": 12.0, "listingPrice": 12.0, "oversub": 0.9, "lotsFor1": "2 lot", "successRate": 74.6, "lastPrice": 9.91, "debutChg": -24.17, "accChg": -17.42}, {"name": "IMPRESSION DHP", "code": "02695.HK", "note": "Sink Below Listing Price", "date": "2025/12/22", "lotSize": "1,000", "offerPrice": 3.6, "listingPrice": 3.6, "oversub": 3396.5, "lotsFor1": "", "successRate": 0.8, "lastPrice": 2.01, "debutChg": -35.28, "accChg": -44.17}, {"name": "BENQ HOLDING", "code": "02581.HK", "note": "Sink Below Listing Price", "date": "2025/12/22", "lotSize": "500", "offerPrice": 9.34, "listingPrice": 9.34, "oversub": 5.3, "lotsFor1": "8 lot", "successRate": 50.0, "lastPrice": 3.35, "debutChg": -49.46, "accChg": -64.13}, {"name": "B&K CORP-B", "code": "02396.HK", "note": "Sink Below Listing Price", "date": "2025/12/22", "lotSize": "200", "offerPrice": 38.2, "listingPrice": 38.2, "oversub": 791.0, "lotsFor1": "1250 lot", "successRate": 2.5, "lastPrice": 5.96, "debutChg": -29.32, "accChg": -84.4}, {"name": "CIDI", "code": "03881.HK", "note": "Sink Below Listing Price", "date": "2025/12/19", "lotSize": "10", "offerPrice": 263.0, "listingPrice": 263.0, "oversub": 21.6, "lotsFor1": "4 lot", "successRate": 50.0, "lastPrice": 24.2, "debutChg": -13.69, "accChg": -90.8}, {"name": "ZHIHUI MINING", "code": "02546.HK", "note": "", "date": "2025/12/19", "lotSize": "1,000", "offerPrice": 4.51, "listingPrice": 4.51, "oversub": 5247.2, "lotsFor1": "", "successRate": 1.0, "lastPrice": 16.43, "debutChg": 90.69, "accChg": 264.3}, {"name": "HASHKEY HLDGS", "code": "03887.HK", "note": "Sink Below Listing Price", "date": "2025/12/17", "lotSize": "400", "offerPrice": 6.68, "listingPrice": 6.68, "oversub": 392.7, "lotsFor1": "250 lot", "successRate": 10.0, "lastPrice": 4.19, "debutChg": -0.15, "accChg": -37.27}, {"name": "GUOXIA TECH", "code": "02655.HK", "note": "", "date": "2025/12/16", "lotSize": "100", "offerPrice": 20.1, "listingPrice": 20.1, "oversub": 1889.7, "lotsFor1": "2500 lot", "successRate": 10.0, "lastPrice": 27.42, "debutChg": 117.91, "accChg": 36.42}, {"name": "JD INDUSTRIALS", "code": "07618.HK", "note": "", "date": "2025/12/11", "lotSize": "200", "offerPrice": 14.1, "listingPrice": 14.1, "oversub": 59.5, "lotsFor1": "50 lot", "successRate": 35.0, "lastPrice": 14.3, "debutChg": 0.0, "accChg": 1.42}, {"name": "BAO PHARMA-B", "code": "02659.HK", "note": "Sink Below Listing Price", "date": "2025/12/10", "lotSize": "100", "offerPrice": 26.38, "listingPrice": 26.38, "oversub": 3525.3, "lotsFor1": "", "successRate": 7.0, "lastPrice": 25.24, "debutChg": 138.82, "accChg": -4.32}, {"name": "NOVOSENSE", "code": "02676.HK", "note": "", "date": "2025/12/08", "lotSize": "100", "offerPrice": 116.0, "listingPrice": 116.0, "oversub": 24.3, "lotsFor1": "25 lot", "successRate": 4.3, "lastPrice": 155.4, "debutChg": -4.31, "accChg": 33.97}, {"name": "ABLE DIGITAL", "code": "02687.HK", "note": "", "date": "2025/12/08", "lotSize": "100", "offerPrice": 67.5, "listingPrice": 67.5, "oversub": 4812.4, "lotsFor1": "", "successRate": 1.0, "lastPrice": 140.6, "debutChg": 87.26, "accChg": 108.3}, {"name": "TIANYU SEMI", "code": "02658.HK", "note": "Sink Below Listing Price", "date": "2025/12/05", "lotSize": "50", "offerPrice": 58.0, "listingPrice": 58.0, "oversub": 59.6, "lotsFor1": "30 lot", "successRate": 10.0, "lastPrice": 45.0, "debutChg": -30.17, "accChg": -22.41}, {"name": "XIAO NOODLES", "code": "02408.HK", "note": "Sink Below Listing Price", "date": "2025/12/05", "lotSize": "500", "offerPrice": 7.04, "listingPrice": 7.04, "oversub": 425.0, "lotsFor1": "400 lot", "successRate": 2.0, "lastPrice": 4.19, "debutChg": -27.84, "accChg": -40.48}, {"name": "LEMO SERVICES", "code": "02539.HK", "note": "Sink Below Listing Price", "date": "2025/12/03", "lotSize": "100", "offerPrice": 40.0, "listingPrice": 40.0, "oversub": 7323.3, "lotsFor1": "", "successRate": 0.8, "lastPrice": 16.47, "debutChg": 36.25, "accChg": -58.83}, {"name": "JINYAN KAOLIN", "code": "02693.HK", "note": "Sink Below Listing Price", "date": "2025/12/03", "lotSize": "500", "offerPrice": 7.3, "listingPrice": 7.3, "oversub": 8284.3, "lotsFor1": "", "successRate": 0.0, "lastPrice": 3.86, "debutChg": 2.19, "accChg": -47.12}, {"name": "HAIWEI ELEC", "code": "09609.HK", "note": "Sink Below Listing Price", "date": "2025/11/28", "lotSize": "200", "offerPrice": 14.28, "listingPrice": 14.28, "oversub": 5425.3, "lotsFor1": "", "successRate": 1.0, "lastPrice": 5.86, "debutChg": -22.97, "accChg": -58.96}, {"name": "QUANTGROUP", "code": "02685.HK", "note": "", "date": "2025/11/27", "lotSize": "500", "offerPrice": 9.8, "listingPrice": 9.8, "oversub": 9365.3, "lotsFor1": "", "successRate": 0.6, "lastPrice": 17.39, "debutChg": 88.78, "accChg": 77.45}, {"name": "CHUANGXIN IND", "code": "02788.HK", "note": "", "date": "2025/11/24", "lotSize": "500", "offerPrice": 10.99, "listingPrice": 10.99, "oversub": 446.2, "lotsFor1": "180 lot", "successRate": 10.0, "lastPrice": 24.8, "debutChg": 32.76, "accChg": 125.66}, {"name": "CNGR", "code": "02579.HK", "note": "", "date": "2025/11/17", "lotSize": "200", "offerPrice": 34.0, "listingPrice": 34.0, "oversub": 26.9, "lotsFor1": "25 lot", "successRate": 10.0, "lastPrice": 41.82, "debutChg": -0.12, "accChg": 23.0}, {"name": "SOFTCARE", "code": "02698.HK", "note": "", "date": "2025/11/10", "lotSize": "200", "offerPrice": 26.2, "listingPrice": 26.2, "oversub": 1812.8, "lotsFor1": "3000 lot", "successRate": 1.0, "lastPrice": 28.9, "debutChg": 25.95, "accChg": 10.3}];
+
+// ===== 工具函数 =====
+const pctColor = v => v > 0 ? '#ef4444' : v < 0 ? '#22c55e' : '#94a3b8';
+const fmtPct = v => v == null ? '-' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+
+// ===== 统计卡片 =====
+function renderStats() {
+  const valid = DATA.filter(d => d.debutChg != null);
+  const total = DATA.length;
+  const upN = valid.filter(d => d.debutChg > 0).length;
+  const downN = valid.filter(d => d.debutChg < 0).length;
+  const flatN = valid.filter(d => d.debutChg === 0).length;
+  const avg = valid.reduce((s, d) => s + d.debutChg, 0) / valid.length;
+  const sorted = [...valid].sort((a, b) => a.debutChg - b.debutChg);
+  const median = sorted[Math.floor(sorted.length / 2)].debutChg;
+  const maxV = Math.max(...valid.map(d => d.debutChg));
+  const minV = Math.min(...valid.map(d => d.debutChg));
+  const avgOversub = DATA.filter(d => d.oversub).reduce((s, d) => s + d.oversub, 0) / DATA.filter(d => d.oversub).length;
+  const avgSR = DATA.filter(d => d.successRate).reduce((s, d) => s + d.successRate, 0) / DATA.filter(d => d.successRate).length;
+
+  const dates = DATA.map(d => d.date).filter(Boolean).sort();
+  document.getElementById('dateRange').textContent = `数据范围: ${dates[0]} ~ ${dates[dates.length - 1]}  |  共 ${total} 只 IPO`;
+
+  const cards = [
+    { label: 'IPO 总数', value: total, cls: 'blue', sub: `${dates[0]} ~ ${dates[dates.length-1]}` },
+    { label: '首日上涨', value: upN, cls: 'up', sub: `${(upN/valid.length*100).toFixed(1)}% 的 IPO 首日上涨` },
+    { label: '首日下跌', value: downN, cls: 'down', sub: `${(downN/valid.length*100).toFixed(1)}% 的 IPO 首日破发` },
+    { label: '平均首日涨幅', value: avg.toFixed(1) + '%', cls: avg > 0 ? 'up' : 'down', sub: `中位数: ${median.toFixed(1)}%` },
+    { label: '最大首日涨幅', value: '+' + maxV.toFixed(1) + '%', cls: 'up', sub: valid.find(d => d.debutChg === maxV).name },
+    { label: '最大首日跌幅', value: minV.toFixed(1) + '%', cls: 'down', sub: valid.find(d => d.debutChg === minV).name },
+    { label: '平均超额认购', value: avgOversub.toFixed(0) + 'x', cls: 'purple', sub: '超额认购倍数均值' },
+    { label: '平均中签率', value: avgSR.toFixed(1) + '%', cls: 'orange', sub: '一手中签率均值' },
+  ];
+
+  document.getElementById('statsRow').innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="label">${c.label}</div>
+      <div class="value ${c.cls}">${c.value}</div>
+      <div class="sub">${c.sub}</div>
+    </div>
+  `).join('');
+}
+
+// ===== 每月 IPO & 破发率 =====
+function renderMonthly() {
+  const monthly = {};
+  DATA.forEach(d => {
+    const m = d.date.substring(0, 7).replace('/', '-');
+    if (!monthly[m]) monthly[m] = { count: 0, broke: 0 };
+    monthly[m].count++;
+    if (d.debutChg != null && d.debutChg < 0) monthly[m].broke++;
+  });
+  const months = Object.keys(monthly).sort();
+  const counts = months.map(m => monthly[m].count);
+  const rates = months.map(m => +(monthly[m].broke / monthly[m].count * 100).toFixed(1));
+
+  echarts.init(document.getElementById('chartMonthly')).setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['IPO 数量', '破发率'], textStyle: { color: '#94a3b8' } },
+    xAxis: { type: 'category', data: months, axisLabel: { color: '#94a3b8' } },
+    yAxis: [
+      { type: 'value', name: '数量', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+      { type: 'value', name: '破发率(%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8', formatter: '{value}%' }, max: 100, splitLine: { show: false } }
+    ],
+    series: [
+      { name: 'IPO 数量', type: 'bar', data: counts, itemStyle: { color: '#60a5fa', borderRadius: [4, 4, 0, 0] }, label: { show: true, position: 'top', color: '#94a3b8' } },
+      { name: '破发率', type: 'line', yAxisIndex: 1, data: rates, itemStyle: { color: '#ef4444' }, lineStyle: { width: 3 }, symbol: 'circle', symbolSize: 8, label: { show: true, formatter: '{c}%', color: '#ef4444' } }
+    ]
+  });
+}
+
+// ===== 首日涨跌幅分布 =====
+function renderDistribution() {
+  const valid = DATA.filter(d => d.debutChg != null).map(d => d.debutChg);
+  const min = Math.floor(Math.min(...valid) / 20) * 20;
+  const max = Math.ceil(Math.max(...valid) / 20) * 20;
+  const bins = [];
+  for (let i = min; i < max; i += 20) bins.push({ range: `${i}~${i + 20}%`, low: i, high: i + 20, count: 0 });
+  valid.forEach(v => { const b = bins.find(b => v >= b.low && v < b.high); if (b) b.count++; });
+
+  echarts.init(document.getElementById('chartDist')).setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: bins.map(b => b.range), axisLabel: { color: '#94a3b8', rotate: 45, fontSize: 11 } },
+    yAxis: { type: 'value', name: '数量', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    series: [{
+      type: 'bar', data: bins.map(b => ({
+        value: b.count,
+        itemStyle: { color: b.low >= 0 ? '#ef4444' : '#22c55e', borderRadius: [4, 4, 0, 0] }
+      })),
+      label: { show: true, position: 'top', color: '#94a3b8', formatter: p => p.value > 0 ? p.value : '' }
+    }]
+  });
+}
+
+// ===== TOP / BOTTOM 图 =====
+function renderTopBottom() {
+  const valid = DATA.filter(d => d.debutChg != null);
+  const top15 = [...valid].sort((a, b) => b.debutChg - a.debutChg).slice(0, 15).reverse();
+  const bot15 = [...valid].sort((a, b) => a.debutChg - b.debutChg).slice(0, 15);
+
+  const makeBar = (id, data, isTop) => {
+    echarts.init(document.getElementById(id)).setOption({
+      tooltip: { trigger: 'axis', formatter: p => `${p[0].name}<br/>首日涨跌: <b>${p[0].value > 0 ? '+' : ''}${p[0].value}%</b>` },
+      grid: { left: 140, right: 60 },
+      xAxis: { type: 'value', axisLabel: { color: '#94a3b8', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+      yAxis: { type: 'category', data: data.map(d => d.name + '\n' + d.code), axisLabel: { color: '#cbd5e1', fontSize: 11 } },
+      series: [{
+        type: 'bar', data: data.map(d => ({
+          value: d.debutChg,
+          itemStyle: { color: d.debutChg > 0 ? '#ef4444' : '#22c55e', borderRadius: isTop ? [0, 4, 4, 0] : [4, 0, 0, 4] }
+        })),
+        label: { show: true, position: isTop ? 'right' : 'left', color: '#f1f5f9', formatter: p => (p.value > 0 ? '+' : '') + p.value + '%' }
+      }]
+    });
+  };
+
+  makeBar('chartTop', top15, true);
+  makeBar('chartBottom', bot15, false);
+}
+
+// ===== 散点图: 超额认购 vs 首日涨幅 =====
+function renderScatter() {
+  const data = DATA.filter(d => d.oversub != null && d.debutChg != null);
+
+  echarts.init(document.getElementById('chartScatter')).setOption({
+    tooltip: { formatter: p => `<b>${p.data[2]}</b><br/>超额认购: ${p.data[0]}x<br/>首日涨跌: ${p.data[1] > 0 ? '+' : ''}${p.data[1]}%` },
+    xAxis: { type: 'value', name: '超额认购倍数(x)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'value', name: '首日涨跌幅(%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    series: [{
+      type: 'scatter', symbolSize: 10,
+      data: data.map(d => [d.oversub, d.debutChg, d.name]),
+      itemStyle: { color: p => p.data[1] > 0 ? '#ef4444' : '#22c55e', opacity: 0.8 }
+    }],
+    visualMap: { show: false }
+  });
+}
+
+// ===== 散点图: 中签率 vs 首日涨幅 =====
+function renderSuccess() {
+  const data = DATA.filter(d => d.successRate != null && d.debutChg != null);
+
+  echarts.init(document.getElementById('chartSuccess')).setOption({
+    tooltip: { formatter: p => `<b>${p.data[2]}</b><br/>中签率: ${p.data[0]}%<br/>首日涨跌: ${p.data[1] > 0 ? '+' : ''}${p.data[1]}%` },
+    xAxis: { type: 'value', name: '一手中签率(%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'value', name: '首日涨跌幅(%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    series: [{
+      type: 'scatter', symbolSize: 10,
+      data: data.map(d => [d.successRate, d.debutChg, d.name]),
+      itemStyle: { color: p => p.data[1] > 0 ? '#ef4444' : '#22c55e', opacity: 0.8 }
+    }]
+  });
+}
+
+// ===== 首日 vs 累计涨跌 =====
+function renderCompare() {
+  const sorted = [...DATA].filter(d => d.debutChg != null || d.accChg != null).sort((a, b) => a.date.localeCompare(b.date));
+  const names = sorted.map(d => d.name);
+
+  echarts.init(document.getElementById('chartCompare')).setOption({
+    tooltip: { trigger: 'axis', formatter: ps => {
+      let s = `<b>${ps[0].axisValue}</b><br/>`;
+      ps.forEach(p => s += `${p.marker} ${p.seriesName}: ${p.value != null ? (p.value > 0 ? '+' : '') + p.value + '%' : '-'}<br/>`);
+      return s;
+    } },
+    legend: { data: ['首日涨跌幅', '累计涨跌幅'], textStyle: { color: '#94a3b8' } },
+    dataZoom: [{ type: 'slider', show: true, start: 0, end: 100, textStyle: { color: '#94a3b8' } }],
+    grid: { bottom: 80 },
+    xAxis: { type: 'category', data: names, axisLabel: { color: '#94a3b8', rotate: 45, fontSize: 10 } },
+    yAxis: { type: 'value', name: '涨跌幅(%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    series: [
+      { name: '首日涨跌幅', type: 'bar', data: sorted.map(d => d.debutChg), itemStyle: { color: '#60a5fa' }, barGap: '0%' },
+      { name: '累计涨跌幅', type: 'bar', data: sorted.map(d => d.accChg), itemStyle: { color: '#f59e0b' } }
+    ]
+  });
+}
+
+// ===== 数据表 =====
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = DATA.map(d => {
+    const dc = d.debutChg != null ? `<span class="badge ${d.debutChg >= 0 ? 'badge-up' : 'badge-down'}">${fmtPct(d.debutChg)}</span>` : '-';
+    const ac = d.accChg != null ? `<span class="badge ${d.accChg >= 0 ? 'badge-up' : 'badge-down'}">${fmtPct(d.accChg)}</span>` : '-';
+    const note = d.note ? `<span class="badge badge-note">${d.note}</span>` : '';
+    return `<tr>
+      <td><b>${d.name}</b></td><td>${d.code}</td><td>${d.date}</td>
+      <td>${d.offerPrice ?? '-'}</td><td>${d.listingPrice ?? '-'}</td><td>${d.lastPrice ?? '-'}</td>
+      <td>${d.oversub != null ? d.oversub + 'x' : '-'}</td><td>${d.successRate != null ? d.successRate + '%' : '-'}</td>
+      <td>${dc}</td><td>${ac}</td><td>${note}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ===== 初始化 =====
+renderStats();
+renderMonthly();
+renderDistribution();
+renderTopBottom();
+renderScatter();
+renderSuccess();
+renderCompare();
+renderTable();
+
+// 响应式
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.chart-box').forEach(el => {
+    const chart = echarts.getInstanceByDom(el);
+    if (chart) chart.resize();
+  });
+});
+</script>
+</body>
+</html>
